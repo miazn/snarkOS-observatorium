@@ -145,7 +145,7 @@ impl<N: Network, C: ConsensusStorage<N>> Consensus<N, C> {
             self.memory_pool.candidate_solutions(self, latest_height, latest_proof_target, latest_coinbase_target)?;
 
         // Prepare the next block.
-        self.ledger.prepare_advance_to_next_block(private_key, transactions, prover_solutions, rng)
+        self.ledger.prepare_advance_to_next_beacon_block(private_key, prover_solutions.unwrap(), transactions, rng)
     }
 
     /// Advances the ledger to the next block.

@@ -27,6 +27,9 @@ pub use start::*;
 mod update;
 pub use update::*;
 
+mod kafka;
+pub use kafka::*;
+
 use anstyle::{AnsiColor, Color, Style};
 use anyhow::Result;
 use clap::{builder::Styles, Parser};
@@ -61,6 +64,8 @@ pub enum Command {
     Start(Box<Start>),
     #[clap(name = "update")]
     Update(Update),
+    #[clap(name = "kafka")]
+    Kafka(Kafka),
 }
 
 impl Command {
@@ -72,6 +77,7 @@ impl Command {
             Self::Developer(command) => command.parse(),
             Self::Start(command) => command.parse(),
             Self::Update(command) => command.parse(),
+            Self::Kafka(command) => command.execute(),
         }
     }
 }
