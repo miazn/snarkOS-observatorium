@@ -14,11 +14,12 @@
 use clap::Parser;
 use anyhow::Result;
 mod snarkvm_integration {
-    use snarkvm::prelude::store::helpers::kafka::KAFKA_PRODUCER;
+    use snarkvm::prelude::store::helpers::kafka::config::KAFKA_PRODUCER;
+    use snarkvm::prelude::store::helpers::kafka::KafkaProducerTrait;
 
     pub fn call_emit_event_from_snarkvm(event_data: &std::option::Option<std::string::String>, topic: &std::option::Option<std::string::String>) {
         // Call the emit_event function from snarkVM
-        KAFKA_PRODUCER.emit_event(event_data.as_ref().unwrap().as_str(), topic.as_ref().unwrap().as_str());
+        KAFKA_PRODUCER.emit_event(event_data.as_ref().unwrap().as_str(), "test", topic.as_ref().unwrap().as_str());
     }
 }
 
