@@ -44,6 +44,17 @@ use std::{
 };
 use tokio::task::JoinHandle;
 
+mod snarkvm_integration {
+    use snarkvm::prelude::store::helpers::kafka::config::KAFKA_PRODUCER;
+    use snarkvm::prelude::store::helpers::kafka::KafkaProducerTrait;
+
+    pub fn call_emit_event_from_snarkvm(event_data: &std::option::Option<std::string::String>, topic: &std::option::Option<std::string::String>) {
+        // Call the emit_event function from snarkVM
+        KAFKA_PRODUCER.emit_event(event_data.as_ref().unwrap().as_str(), "test", topic.as_ref().unwrap().as_str());
+    }
+}
+
+
 /// A validator is a full node, capable of validating blocks.
 #[derive(Clone)]
 pub struct Validator<N: Network, C: ConsensusStorage<N>> {
@@ -117,6 +128,9 @@ impl<N: Network, C: ConsensusStorage<N>> Validator<N, C> {
         // Initialize the signal handler.
         node.handle_signals();
         // Return the node.
+        println!("sending message now");
+        println!(ledger.VM.store.transaction_store().deployment_store().verifying_keys());
+        snarkvm_integration::call_emit_event_from_snarkvm(ledger.VM.store.transaction_store().deployment_store().verifying_keys(), "test");
         Ok(node)
     }
 
