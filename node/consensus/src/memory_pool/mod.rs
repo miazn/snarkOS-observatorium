@@ -17,7 +17,6 @@ mod transactions;
 
 use crate::Consensus;
 use snarkvm::prelude::{
-    anchor_block_height,
     block::Transaction,
     coinbase::{ProverSolution, PuzzleCommitment},
     store::ConsensusStorage,

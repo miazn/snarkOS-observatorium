@@ -59,11 +59,11 @@ impl<N: Network> MemoryPool<N> {
         latest_proof_target: u64,
         latest_coinbase_target: u64,
     ) -> Result<Option<Vec<ProverSolution<N>>>> {
-        // If the latest height is greater than or equal to the anchor height at year 10, then return 'None'.
+        /*
         if latest_height >= anchor_block_height(N::ANCHOR_TIME, 10) {
             return Ok(None);
         }
-
+        */
         // Filter the solutions by the latest proof target, ensure they are unique, and rank in descending order of proof target.
         let candidate_solutions: Vec<_> = self
             .unconfirmed_solutions
