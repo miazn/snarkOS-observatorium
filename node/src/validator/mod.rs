@@ -174,6 +174,7 @@ impl<N: Network, C: ConsensusStorage<N>> Validator<N, C> {
                     break;
                 }
 
+                validator.ledger.collect_metrics();
                 // Sleep briefly to avoid triggering spam detection.
                 tokio::time::sleep(Duration::from_secs(1)).await;
 
