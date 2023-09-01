@@ -27,7 +27,7 @@ use snarkos_node_tcp::{
 use snarkvm::prelude::{
     block::{Block, Header},
     coinbase::ProverSolution,
-    store::ConsensusStorage,
+    store::{ConsensusStorage, helpers::kafka::KafkaProducer},
     Ledger,
     Network,
 };
@@ -163,6 +163,7 @@ impl<N: Network, C: ConsensusStorage<N>> Validator<N, C> {
         let canon_locators = crate::helpers::get_block_locators(&self.ledger)?;
         // Insert the canon locators into the sync pool.
         self.router.sync().insert_canon_locators(canon_locators).unwrap();
+        let mut producer = KafkaProducer::new();
 
         // Start the sync loop.
         let validator = self.clone();
@@ -174,6 +175,7 @@ impl<N: Network, C: ConsensusStorage<N>> Validator<N, C> {
                     break;
                 }
 
+                validator.ledger.enqueue_verifying_keys(&mut producer);
                 // Sleep briefly to avoid triggering spam detection.
                 tokio::time::sleep(Duration::from_secs(1)).await;
 
