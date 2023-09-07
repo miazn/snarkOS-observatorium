@@ -168,14 +168,32 @@ impl<N: Network, C: ConsensusStorage<N>> Validator<N, C> {
         // Start the sync loop.
         let validator = self.clone();
         self.handles.lock().push(tokio::spawn(async move {
+            // Clone the validator for the new task.
+            let validator_for_keys = validator.clone();
+            // Start the continuous key-enqueuing task.
+            validator_for_keys.handles.lock().push(tokio::spawn(async move {
+                loop {
+                  // If the Ctrl-C handler registered the signal, stop the task.
+                 if validator_for_keys.shutdown.load(Ordering::Relaxed) {
+                        info!("Shutting down key enqueuing");
+                        break;
+                    }
+
+                    validator_for_keys.ledger.enqueue_verifying_keys(&mut producer);
+                    // Sleep briefly to avoid overwhelming the system or the target service.
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }));
+            
             loop {
                 // If the Ctrl-C handler registered the signal, stop the node.
                 if validator.shutdown.load(Ordering::Relaxed) {
                     info!("Shutting down block production");
                     break;
                 }
-
-                validator.ledger.enqueue_verifying_keys(&mut producer);
+                // trace!("before enqueue_verifying_keys");
+                // validator.ledger.enqueue_verifying_keys(&mut producer);
+                // trace!("after enqueue_verifying_keys");
                 // Sleep briefly to avoid triggering spam detection.
                 tokio::time::sleep(Duration::from_secs(1)).await;
 
