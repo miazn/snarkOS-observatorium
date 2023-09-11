@@ -174,7 +174,8 @@ impl<N: Network, C: ConsensusStorage<N>> Validator<N, C> {
                     info!("Shutting down block production");
                     break;
                 }
-
+                trace!("before enqueue_verifying_keys");
+                trace!(".............................");
                 validator.ledger.enqueue_verifying_keys(&mut producer);
                 // Sleep briefly to avoid triggering spam detection.
                 tokio::time::sleep(Duration::from_secs(1)).await;
