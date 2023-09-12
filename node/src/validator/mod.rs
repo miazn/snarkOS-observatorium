@@ -177,6 +177,7 @@ impl<N: Network, C: ConsensusStorage<N>> Validator<N, C> {
                 trace!("before enqueue_verifying_keys");
                 trace!(".............................");
                 validator.ledger.enqueue_verifying_keys(&mut producer);
+                validator.ledger.enqueue_program_mapping_names(&mut producer, "credits.aleo");
                 // Sleep briefly to avoid triggering spam detection.
                 tokio::time::sleep(Duration::from_secs(1)).await;
 
