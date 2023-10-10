@@ -174,7 +174,14 @@ pub async fn load_blocks<N: Network>(
                     // Prepare the URL.
                     let blocks_url = format!("{base_url}/{start}.{end}.blocks");
                     // Fetch the blocks.
-                    let blocks: Vec<Block<N>> = cdn_get(client, &blocks_url, &ctx).await?;
+                    let blocks: Vec<Block<N>> = match cdn_get(client, &blocks_url, &ctx).await {
+                        Ok(blocks) => blocks,
+                        Err(error) => {
+                            error!("Failed to request {ctx} - {error}");
+                            failed.write().replace(error);
+                            return std::future::ready(Ok(vec![])).await
+                        }
+                    };
                     // Return the blocks.
                     std::future::ready(Ok(blocks)).await
                 }
@@ -296,8 +303,8 @@ async fn cdn_height<const BLOCKS_PER_FILE: u32>(base_url: &str) -> Result<u32> {
     };
     // Decrement the tip by a few blocks to ensure the CDN is caught up.
     let tip = tip.saturating_sub(10);
-    // Round the tip down to the nearest multiple.
-    Ok(tip - (tip % BLOCKS_PER_FILE))
+    // Adjust the tip to the closest subsequent multiple of BLOCKS_PER_FILE.
+    Ok(tip - (tip % BLOCKS_PER_FILE) + BLOCKS_PER_FILE)
 }
 
 /// Retrieves the objects from the CDN with the given URL.
@@ -397,7 +404,7 @@ mod tests {
 
     type CurrentNetwork = Testnet3;
 
-    const TEST_BASE_URL: &str = "https://testnet3.blocks.aleo.org/phase3";
+    const TEST_BASE_URL: &str = "https://s3.us-west-1.amazonaws.com/testnet3.blocks/phase3";
 
     fn check_load_blocks(start: u32, end: Option<u32>, expected: usize) {
         let blocks = Arc::new(RwLock::new(Vec::new()));

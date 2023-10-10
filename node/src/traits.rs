@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use snarkos_node_messages::NodeType;
-use snarkos_node_router::Routing;
+use snarkos_node_router::{messages::NodeType, Routing};
 use snarkvm::prelude::{Address, Network, PrivateKey, ViewKey};
+
+use once_cell::sync::OnceCell;
+use std::sync::Arc;
 
 #[async_trait]
 pub trait NodeInterface<N: Network>: Routing<N> {
@@ -45,17 +47,25 @@ pub trait NodeInterface<N: Network>: Routing<N> {
 
     /// Handles OS signals for the node to intercept and perform a clean shutdown.
     /// Note: Only Ctrl-C is supported; it should work on both Unix-family systems and Windows.
-    fn handle_signals(&self) {
-        let node = self.clone();
+    fn handle_signals() -> Arc<OnceCell<Self>> {
+        // In order for the signal handler to be started as early as possible, a reference to the node needs
+        // to be passed to it at a later time.
+        let node: Arc<OnceCell<Self>> = Default::default();
+
+        let node_clone = node.clone();
         tokio::task::spawn(async move {
             match tokio::signal::ctrl_c().await {
                 Ok(()) => {
-                    node.shut_down().await;
+                    if let Some(node) = node_clone.get() {
+                        node.shut_down().await;
+                    }
                     std::process::exit(0);
                 }
                 Err(error) => error!("tokio::signal::ctrl_c encountered an error: {}", error),
             }
         });
+
+        node
     }
 
     /// Shuts down the node.
