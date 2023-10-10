@@ -45,6 +45,10 @@ members = [
 path = "../snarkVMkafka"
 features = [ "circuit", "console", "rocks" ]
 
+[dependencies.snarkvm-algorithms]
+version = "0.15.4"
+path = "../snarkVMkafka/algorithms"
+
 [[bin]]
 name = "snarkos"
 path = "snarkos/main.rs"
