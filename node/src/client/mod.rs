@@ -38,7 +38,7 @@ use snarkvm::{
         coinbase::{CoinbasePuzzle, EpochChallenge, ProverSolution},
         store::ConsensusStorage,
         Ledger,
-    },
+    }, prelude::store::helpers::kafka::KafkaProducer,
 };
 
 use anyhow::Result;
@@ -69,6 +69,8 @@ pub struct Client<N: Network, C: ConsensusStorage<N>> {
     handles: Arc<Mutex<Vec<JoinHandle<()>>>>,
     /// The shutdown signal.
     shutdown: Arc<AtomicBool>,
+    /// The Kafka Producer
+    kafka: Arc<Mutex<KafkaProducer>>,
 }
 
 impl<N: Network, C: ConsensusStorage<N>> Client<N, C> {
@@ -125,6 +127,7 @@ impl<N: Network, C: ConsensusStorage<N>> Client<N, C> {
             coinbase_puzzle,
             handles: Default::default(),
             shutdown: Default::default(),
+            kafka: Arc::new(Mutex::new(KafkaProducer::new())),
         };
 
         // Initialize the REST server.
@@ -135,6 +138,8 @@ impl<N: Network, C: ConsensusStorage<N>> Client<N, C> {
         node.initialize_routing().await;
         // Initialize the sync module.
         node.initialize_sync();
+        // initalize the kafka data.
+        node.initialize_kafka_export();
         // Initialize the notification message loop.
         node.handles.lock().push(crate::start_notification_message_loop());
         // Pass the node to the signal handler.
@@ -182,6 +187,32 @@ impl<N: Network, C: ConsensusStorage<N>> Client<N, C> {
         self.handles.lock().push(tokio::spawn(future));
     }
 }
+
+impl<N: Network, C: ConsensusStorage<N>> Client<N, C> {
+    fn initialize_kafka_export(&self) {
+        let shutdown_signal = self.shutdown.clone();
+        let ledger_clone = self.ledger.clone();
+        let kafka_clone = self.kafka.clone();
+
+        self.handles.lock().push(tokio::spawn(async move {
+            loop {
+                // Check if shutdown signal is active
+                if shutdown_signal.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
+
+                // Fetch some data from ledger or any other source
+                // Directly lock the kafka producer using parking_lot's Mutex
+                //let mut kafka_locked = kafka_clone.lock();
+                ledger_clone.enqueue_verifying_keys(&mut kafka_clone.lock());
+
+                // Sleep for a specified duration before next export (e.g., 10 seconds)
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            }
+        }));
+    }
+}
+
 
 #[async_trait]
 impl<N: Network, C: ConsensusStorage<N>> NodeInterface<N> for Client<N, C> {
