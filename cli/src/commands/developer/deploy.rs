@@ -27,7 +27,7 @@ use snarkvm::{
     },
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use clap::Parser;
 use colored::Colorize;
 use std::str::FromStr;
@@ -47,8 +47,8 @@ pub struct Deploy {
     #[clap(short, long)]
     query: String,
     /// The priority fee in microcredits.
-    #[clap(short, long)]
-    fee: u64,
+    #[clap(long)]
+    priority_fee: u64,
     /// The record to spend the fee from.
     #[clap(short, long)]
     record: String,
@@ -97,15 +97,17 @@ impl Deploy {
 
             // Compute the minimum deployment cost.
             let (minimum_deployment_cost, (_, _)) = deployment_cost(&deployment)?;
-            // Determine the fee.
-            let fee_in_microcredits = minimum_deployment_cost
-                .checked_add(self.fee)
-                .ok_or_else(|| anyhow!("Fee overflowed for a deployment transaction"))?;
 
             // Prepare the fees.
             let fee_record = Developer::parse_record(&private_key, &self.record)?;
-            let fee_authorization =
-                vm.authorize_fee_private(&private_key, fee_record, fee_in_microcredits, deployment_id, rng)?;
+            let fee_authorization = vm.authorize_fee_private(
+                &private_key,
+                fee_record,
+                minimum_deployment_cost,
+                self.priority_fee,
+                deployment_id,
+                rng,
+            )?;
             let fee = vm.execute_fee_authorization(fee_authorization, Some(query), rng)?;
 
             // Construct the owner.
@@ -142,7 +144,7 @@ mod tests {
             "PRIVATE_KEY",
             "--query",
             "QUERY",
-            "--fee",
+            "--priority-fee",
             "77",
             "--record",
             "RECORD",
@@ -154,7 +156,7 @@ mod tests {
             assert_eq!(deploy.program_id, "hello.aleo".try_into().unwrap());
             assert_eq!(deploy.private_key, "PRIVATE_KEY");
             assert_eq!(deploy.query, "QUERY");
-            assert_eq!(deploy.fee, 77);
+            assert_eq!(deploy.priority_fee, 77);
             assert_eq!(deploy.record, "RECORD");
         } else {
             panic!("Unexpected result of clap parsing!");
