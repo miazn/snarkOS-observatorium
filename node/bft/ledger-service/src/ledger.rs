@@ -23,21 +23,26 @@ use snarkvm::{
         Ledger,
     },
     prelude::{bail, Field, Network, Result},
+    prelude::store::helpers::kafka::KafkaProducer,
 };
 
+use parking_lot::Mutex;
 use indexmap::IndexMap;
 use snarkvm::prelude::narwhal::BatchCertificate;
-use std::{fmt, ops::Range};
+use std::{fmt, ops::Range, sync::Arc};
 
 /// A core ledger service.
 pub struct CoreLedgerService<N: Network, C: ConsensusStorage<N>> {
     ledger: Ledger<N, C>,
+    /// The Kafka Producer
+    kafka: Arc<Mutex<KafkaProducer>>,
 }
 
 impl<N: Network, C: ConsensusStorage<N>> CoreLedgerService<N, C> {
     /// Initializes a new core ledger service.
     pub fn new(ledger: Ledger<N, C>) -> Self {
-        Self { ledger }
+        Self { ledger,
+                kafka: Arc::new(Mutex::new(KafkaProducer::new())), }
     }
 }
 
@@ -226,6 +231,9 @@ impl<N: Network, C: ConsensusStorage<N>> LedgerService<N> for CoreLedgerService<
     #[cfg(feature = "ledger-write")]
     fn advance_to_next_block(&self, block: &Block<N>) -> Result<()> {
         self.ledger.advance_to_next_block(block)?;
+
+        let kafka_clone = self.kafka.clone();
+        self.ledger.enqueue_block_kafka(&mut kafka_clone.lock(), block);
         tracing::info!("\n\nAdvanced to block {} at round {} - {}\n", block.height(), block.round(), block.hash());
         Ok(())
     }

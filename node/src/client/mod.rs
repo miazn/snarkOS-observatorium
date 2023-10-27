@@ -139,7 +139,7 @@ impl<N: Network, C: ConsensusStorage<N>> Client<N, C> {
         // Initialize the sync module.
         node.initialize_sync();
         // initalize the kafka data.
-        node.initialize_kafka_export();
+        //node.initialize_kafka_export();
         // Initialize the notification message loop.
         node.handles.lock().push(crate::start_notification_message_loop());
         // Pass the node to the signal handler.
