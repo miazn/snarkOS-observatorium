@@ -40,7 +40,9 @@ members = [
 ]
 
 [workspace.dependencies.snarkvm]
-version = "=0.16.6"
+#git = "https://github.com/AleoHQ/snarkVM.git"
+#rev = "f827660"
+path = "../snarkVMkafka"
 features = [ "circuit", "console", "rocks" ]
 
 [dependencies.snarkvm-algorithms]

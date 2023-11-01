@@ -23,10 +23,8 @@ use snarkvm::{
         Ledger,
     },
     prelude::{bail, Field, Network, Result},
-    prelude::store::helpers::kafka::KafkaProducer,
 };
 
-use parking_lot::Mutex;
 use indexmap::IndexMap;
 use snarkvm::prelude::narwhal::BatchCertificate;
 use std::{fmt, ops::Range, sync::Arc};
@@ -233,9 +231,6 @@ impl<N: Network, C: ConsensusStorage<N>> LedgerService<N> for CoreLedgerService<
     #[cfg(feature = "ledger-write")]
     fn advance_to_next_block(&self, block: &Block<N>) -> Result<()> {
         self.ledger.advance_to_next_block(block)?;
-
-        let kafka_clone = self.kafka.clone();
-        self.ledger.enqueue_block_kafka(&mut kafka_clone.lock(), block);
         tracing::info!("\n\nAdvanced to block {} at round {} - {}\n", block.height(), block.round(), block.hash());
         Ok(())
     }
