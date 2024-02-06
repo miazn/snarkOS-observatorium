@@ -85,7 +85,7 @@ impl<N: Network> ToBytes for PrimaryPing<N> {
         let primary_cert_size = primary_cert_bytes.len() as f64;
         self.primary_certificate.write_le(&mut primary_cert_bytes)?;
         #[cfg(feature = "metrics")]
-        histogram!("primary_ping_size", "type" => "block_locator").record(primary_cert_size);
+        histogram!("primary_ping_size", "type" => "primary_cert").record(primary_cert_size);
 
         // Determine the number of batch certificates.
         let num_certificates =
