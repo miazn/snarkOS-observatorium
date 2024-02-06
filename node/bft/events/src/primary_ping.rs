@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use super::*;
+use metrics_external::histogram;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PrimaryPing<N: Network> {
@@ -21,6 +22,7 @@ pub struct PrimaryPing<N: Network> {
     pub primary_certificate: Data<BatchCertificate<N>>,
     pub batch_certificates: IndexMap<Field<N>, Data<BatchCertificate<N>>>,
 }
+
 
 impl<N: Network> PrimaryPing<N> {
     /// Initializes a new ping event.
@@ -67,8 +69,23 @@ impl<N: Network> ToBytes for PrimaryPing<N> {
         self.version.write_le(&mut writer)?;
         // Write the block locators.
         self.block_locators.write_le(&mut writer)?;
+        
+        // NEW- create copy of block locator writer to measure bytes
+        let mut block_bytes: Vec<u8> = Vec::new();
+        self.block_locators.write_le(&mut block_bytes)?;
+        let block_locators_size = block_bytes.len() as f64;
+        #[cfg(feature = "metrics")]
+        histogram!("primary_ping_size", "type" => "block_locator").record(block_locators_size);
+        
         // Write the primary certificate.
         self.primary_certificate.write_le(&mut writer)?;
+        
+        // NEW- create copy of primary cert writer to measure bytes
+        let mut primary_cert_bytes: Vec<u8> = Vec::new();
+        let primary_cert_size = primary_cert_bytes.len() as f64;
+        self.primary_certificate.write_le(&mut primary_cert_bytes)?;
+        #[cfg(feature = "metrics")]
+        histogram!("primary_ping_size", "type" => "block_locator").record(primary_cert_size);
 
         // Determine the number of batch certificates.
         let num_certificates =
