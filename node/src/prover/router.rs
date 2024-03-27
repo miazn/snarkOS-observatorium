@@ -194,14 +194,17 @@ impl<N: Network, C: ConsensusStorage<N>> Inbound<N> for Prover<N, C> {
 
     /// Saves the latest epoch hash and latest block header in the node.
     fn puzzle_response(&self, peer_ip: SocketAddr, epoch_hash: N::BlockHash, header: Header<N>) -> bool {
-        // Retrieve the block height.
+        // Retrieve the block height, coinbase target, and proof target.
         let block_height = header.height();
+        let coinbase_target = header.coinbase_target();
+        let proof_target = header.proof_target();
 
-        info!(
-            "Puzzle (Block {block_height}, Coinbase Target {}, Proof Target {})",
-            header.coinbase_target(),
-            header.proof_target()
-        );
+        info!("Puzzle (Block {block_height}, Coinbase Target {coinbase_target}, Proof Target {proof_target})");
+        #[cfg(feature = "metrics")]
+        {
+            metrics::increment_gauge(metrics::router::COINBASE_TARGET, coinbase_target as f64);
+            metrics::increment_gauge(metrics::router::PROOF_TARGET, proof_target as f64);
+        }
 
         // Save the latest epoch hash in the node.
         self.latest_epoch_hash.write().replace(epoch_hash);

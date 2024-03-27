@@ -14,7 +14,7 @@
 
 pub(super) const COUNTER_NAMES: [&str; 1] = [bft::LEADERS_ELECTED];
 
-pub(super) const GAUGE_NAMES: [&str; 18] = [
+pub(super) const GAUGE_NAMES: [&str; 20] = [
     bft::CONNECTED,
     bft::CONNECTING,
     bft::LAST_STORED_ROUND,
@@ -32,6 +32,8 @@ pub(super) const GAUGE_NAMES: [&str; 18] = [
     router::CONNECTED,
     router::CANDIDATE,
     router::RESTRICTED,
+    router::PROOF_TARGET,
+    router::COINBASE_TARGET,
     tcp::TCP_TASKS,
 ];
 
@@ -76,6 +78,8 @@ pub mod router {
     pub const CONNECTED: &str = "snarkos_router_connected_total";
     pub const CANDIDATE: &str = "snarkos_router_candidate_total";
     pub const RESTRICTED: &str = "snarkos_router_restricted_total";
+    pub const PROOF_TARGET: &str = "snarkos_proof_target";
+    pub const COINBASE_TARGET: &str = "snarkos_coinbase_target";
 }
 
 pub mod tcp {
