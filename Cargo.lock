@@ -3261,6 +3261,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "indexmap 2.1.0",
+ "metrics",
  "proptest",
  "rayon",
  "serde",
