@@ -23,7 +23,7 @@ use snarkvm::{
     prelude::{anyhow, bail, cfg_iter, ensure, Address, Field, Network, Result},
 };
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::{map::Entry, IndexMap, IndexSet};
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use std::{
@@ -164,12 +164,20 @@ impl<N: Network> Storage<N> {
 
         // Retrieve the current committee.
         let current_committee = self.ledger.current_committee()?;
-        // Ensure the next round is at or after the current committee's starting round.
-        if next_round < current_committee.starting_round() {
-            bail!(
-                "Next round ({next_round}) is behind the current committee's starting round ({})",
-                current_committee.starting_round()
+        // Retrieve the current committee's starting round.
+        let starting_round = current_committee.starting_round();
+        // If the primary is behind the current committee's starting round, sync with the latest block.
+        if next_round < starting_round {
+            // Retrieve the latest block round.
+            let latest_block_round = self.ledger.latest_round();
+            // Log the round sync.
+            info!(
+                "Syncing primary round ({next_round}) with the current committee's starting round ({starting_round}). Syncing with the latest block round {latest_block_round}..."
             );
+            // Sync the round with the latest block.
+            self.sync_round_with_block(latest_block_round);
+            // Return the latest block round.
+            return Ok(latest_block_round);
         }
 
         // Update the storage to the next round.
@@ -340,12 +348,12 @@ impl<N: Network> Storage<N> {
             bail!("Batch for round {round} already exists in storage {gc_log}")
         }
 
-        // Retrieve the previous committee for the batch round.
-        let Ok(previous_committee) = self.ledger.get_previous_committee_for_round(round) else {
-            bail!("Storage failed to retrieve the committee for round {round} {gc_log}")
+        // Retrieve the committee lookback for the batch round.
+        let Ok(committee_lookback) = self.ledger.get_committee_lookback_for_round(round) else {
+            bail!("Storage failed to retrieve the committee lookback for round {round} {gc_log}")
         };
         // Ensure the author is in the committee.
-        if !previous_committee.is_committee_member(batch_header.author()) {
+        if !committee_lookback.is_committee_member(batch_header.author()) {
             bail!("Author {} is not in the committee for round {round} {gc_log}", batch_header.author())
         }
 
@@ -362,8 +370,8 @@ impl<N: Network> Storage<N> {
         let previous_round = round.saturating_sub(1);
         // Check if the previous round is within range of the GC round.
         if previous_round > gc_round {
-            // Retrieve the committee for the previous round.
-            let Ok(previous_committee) = self.ledger.get_previous_committee_for_round(previous_round) else {
+            // Retrieve the committee lookback for the previous round.
+            let Ok(previous_committee_lookback) = self.ledger.get_committee_lookback_for_round(previous_round) else {
                 bail!("Missing committee for the previous round {previous_round} in storage {gc_log}")
             };
             // Ensure the previous round certificates exists in storage.
@@ -371,7 +379,7 @@ impl<N: Network> Storage<N> {
                 bail!("Missing certificates for the previous round {previous_round} in storage {gc_log}")
             }
             // Ensure the number of previous certificate IDs is at or below the number of committee members.
-            if batch_header.previous_certificate_ids().len() > previous_committee.num_members() {
+            if batch_header.previous_certificate_ids().len() > previous_committee_lookback.num_members() {
                 bail!("Too many previous certificates for round {round} {gc_log}")
             }
             // Initialize a set of the previous authors.
@@ -397,7 +405,7 @@ impl<N: Network> Storage<N> {
                 previous_authors.insert(previous_certificate.author());
             }
             // Ensure the previous certificates have reached the quorum threshold.
-            if !previous_committee.is_quorum_threshold_reached(&previous_authors) {
+            if !previous_committee_lookback.is_quorum_threshold_reached(&previous_authors) {
                 bail!("Previous certificates for a batch in round {round} did not reach quorum threshold {gc_log}")
             }
         }
@@ -447,8 +455,8 @@ impl<N: Network> Storage<N> {
         // Check the timestamp for liveness.
         check_timestamp_for_liveness(certificate.timestamp())?;
 
-        // Retrieve the previous committee for the batch round.
-        let Ok(previous_committee) = self.ledger.get_previous_committee_for_round(round) else {
+        // Retrieve the committee lookback for the batch round.
+        let Ok(committee_lookback) = self.ledger.get_committee_lookback_for_round(round) else {
             bail!("Storage failed to retrieve the committee for round {round} {gc_log}")
         };
 
@@ -462,7 +470,7 @@ impl<N: Network> Storage<N> {
             // Retrieve the signer.
             let signer = signature.to_address();
             // Ensure the signer is in the committee.
-            if !previous_committee.is_committee_member(signer) {
+            if !committee_lookback.is_committee_member(signer) {
                 bail!("Signer {signer} is not in the committee for round {round} {gc_log}")
             }
             // Append the signer.
@@ -470,7 +478,7 @@ impl<N: Network> Storage<N> {
         }
 
         // Ensure the signatures have reached the quorum threshold.
-        if !previous_committee.is_quorum_threshold_reached(&signers) {
+        if !committee_lookback.is_quorum_threshold_reached(&signers) {
             bail!("Signatures for a batch in round {round} did not reach quorum threshold {gc_log}")
         }
         Ok(missing_transmissions)
@@ -551,21 +559,26 @@ impl<N: Network> Storage<N> {
         // Compute the author of the batch.
         let author = certificate.author();
 
+        // TODO (howardwu): We may want to use `shift_remove` below, in order to align compatibility
+        //  with tests written to for `remove_certificate`. However, this will come with performance hits.
+        //  It will be better to write tests that compare the union of the sets.
+
         // Update the round.
-        {
-            // Acquire the write lock.
-            let mut rounds = self.rounds.write();
-            // Remove the round to certificate ID entry.
-            rounds.entry(round).or_default().remove(&(certificate_id, batch_id, author));
-            // If the round is empty, remove it.
-            if rounds.get(&round).map_or(false, |entries| entries.is_empty()) {
-                rounds.remove(&round);
+        match self.rounds.write().entry(round) {
+            Entry::Occupied(mut entry) => {
+                // Remove the round to certificate ID entry.
+                entry.get_mut().swap_remove(&(certificate_id, batch_id, author));
+                // If the round is empty, remove it.
+                if entry.get().is_empty() {
+                    entry.swap_remove();
+                }
             }
+            Entry::Vacant(_) => {}
         }
         // Remove the certificate.
-        self.certificates.write().remove(&certificate_id);
+        self.certificates.write().swap_remove(&certificate_id);
         // Remove the batch ID.
-        self.batch_ids.write().remove(&batch_id);
+        self.batch_ids.write().swap_remove(&batch_id);
         // Remove the transmission entries in the certificate from storage.
         self.transmissions.remove_transmissions(&certificate_id, certificate.transmission_ids());
         // Return successfully.
@@ -612,7 +625,7 @@ impl<N: Network> Storage<N> {
         // Reconstruct the unconfirmed transactions.
         let mut unconfirmed_transactions = cfg_iter!(block.transactions())
             .filter_map(|tx| tx.to_unconfirmed_transaction().map(|unconfirmed| (unconfirmed.id(), unconfirmed)).ok())
-            .collect::<IndexMap<_, _>>();
+            .collect::<HashMap<_, _>>();
 
         // Iterate over the transmission IDs.
         for transmission_id in certificate.transmission_ids() {

@@ -31,6 +31,7 @@ use snarkvm::{
     utilities::to_bytes_le,
 };
 
+use aleo_std::StorageMode;
 use anyhow::{bail, ensure, Result};
 use clap::Parser;
 use colored::Colorize;
@@ -123,6 +124,9 @@ pub struct Start {
     /// If development mode is enabled, specify the number of genesis validators (default: 4)
     #[clap(long)]
     pub dev_num_validators: Option<u16>,
+    /// Specify the path to a directory containing the ledger
+    #[clap(long = "storage_path")]
+    pub storage_path: Option<PathBuf>,
 }
 
 impl Start {
@@ -244,7 +248,7 @@ impl Start {
                         let _ = PrivateKey::<N>::new(&mut rng)?;
                     }
                     let private_key = PrivateKey::<N>::new(&mut rng)?;
-                    println!("🔑 Your development private key for node {dev} is {}\n", private_key.to_string().bold());
+                    println!("🔑 Your development private key for node {dev} is {}.\n", private_key.to_string().bold());
                     private_key
                 })
             }
@@ -407,7 +411,7 @@ impl Start {
         // If the display is not enabled, render the welcome message.
         if self.nodisplay {
             // Print the Aleo address.
-            println!("🪪 Your Aleo address is {}.\n", account.address().to_string().bold());
+            println!("👛 Your Aleo address is {}.\n", account.address().to_string().bold());
             // Print the node type and network.
             println!(
                 "🧭 Starting {} on {} {} at {}.\n",
@@ -442,12 +446,18 @@ impl Start {
             metrics::initialize_metrics();
         }
 
+        // Initialize the storage mode.
+        let storage_mode = match &self.storage_path {
+            Some(path) => StorageMode::Custom(path.clone()),
+            None => StorageMode::from(self.dev),
+        };
+
         // Initialize the node.
         let bft_ip = if self.dev.is_some() { self.bft } else { None };
         match node_type {
-            NodeType::Validator => Node::new_validator(self.node, bft_ip, rest_ip, self.rest_rps, account, &trusted_peers, &trusted_validators, genesis, cdn, self.dev).await,
-            NodeType::Prover => Node::new_prover(self.node, account, &trusted_peers, genesis, self.dev).await,
-            NodeType::Client => Node::new_client(self.node, rest_ip, self.rest_rps, account, &trusted_peers, genesis, cdn, self.dev).await,
+            NodeType::Validator => Node::new_validator(self.node, bft_ip, rest_ip, self.rest_rps, account, &trusted_peers, &trusted_validators, genesis, cdn, storage_mode).await,
+            NodeType::Prover => Node::new_prover(self.node, account, &trusted_peers, genesis, storage_mode).await,
+            NodeType::Client => Node::new_client(self.node, rest_ip, self.rest_rps, account, &trusted_peers, genesis, cdn, storage_mode).await,
         }
     }
 
@@ -455,23 +465,12 @@ impl Start {
     fn runtime() -> Runtime {
         // Retrieve the number of cores.
         let num_cores = num_cpus::get();
-        // Determine the number of main cores.
-        let main_cores = match num_cores {
-            // Insufficient
-            0..=3 => {
-                eprintln!("The number of cores is insufficient, at least 4 are needed.");
-                std::process::exit(1);
-            }
-            // Efficiency mode
-            4..=8 => 2,
-            // Standard mode
-            9..=16 => 8,
-            // Performance mode
-            _ => 16,
-        };
 
+        // Initialize the number of tokio worker threads, max tokio blocking threads, and rayon cores.
+        // Note: We intentionally set the number of tokio worker threads and number of rayon cores to be
+        // more than the number of physical cores, because the node is expected to be I/O-bound.
         let (num_tokio_worker_threads, max_tokio_blocking_threads, num_rayon_cores_global) =
-            { (num_cores.min(main_cores), 512, num_cores.saturating_sub(main_cores).max(1)) };
+            (2 * num_cores, 512, num_cores);
 
         // Initialize the parallelization parameters.
         rayon::ThreadPoolBuilder::new()
@@ -566,7 +565,7 @@ fn load_or_compute_genesis<N: Network>(
     /* Otherwise, compute the genesis block and store it. */
 
     // Initialize a new VM.
-    let vm = VM::from(ConsensusStore::<N, ConsensusMemory<N>>::open(None)?)?;
+    let vm = VM::from(ConsensusStore::<N, ConsensusMemory<N>>::open(Some(0))?)?;
     // Initialize the genesis block.
     let block = vm.genesis_quorum(&genesis_private_key, committee, public_balances, rng)?;
     // Write the genesis block to the file.
